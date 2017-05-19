@@ -121,13 +121,6 @@ class DiscordMonitor
 			boolean bot = author.isBot();                    //This boolean is useful to determine if the User that
 															// sent the Message is a BOT or not!
 			
-			boolean isGuildEvent = event.getChannelType().isGuild();
-			Guild guild_ = message.getGuild(); //The Guild that this message was sent in. (note, in the API, Guilds are Servers)
-			TextChannel guild_textChannel = message.getTextChannel(); //The TextChannel that this message was sent to.
-			Member guild_member = null; //This Member that sent the message. Contains Guild specific information about the User!
-			if (isGuildEvent)
-				guild_member = guild_.getMember(author);
-			
 			boolean declaredLoggableHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
 			{
@@ -192,6 +185,10 @@ class DiscordMonitor
 				// Note, if you don't check the ChannelType before using these methods, they might return null due
 				// the message possibly not being from a Guild!
 
+				Guild guild = message.getGuild(); //The Guild that this message was sent in. (note, in the API, Guilds are Servers)
+				TextChannel textChannel = message.getTextChannel(); //The TextChannel that this message was sent to.
+				Member member = guild.getMember(author); //This Member that sent the message. Contains Guild specific information about the User!
+
 				String name;
 				if (message.isWebhookMessage())
 				{
@@ -199,10 +196,11 @@ class DiscordMonitor
 				}                                           // with the User, thus we default to the author for name.
 				else
 				{
-					name = guild_member.getEffectiveName();       //This will either use the Member's nickname if they have one,
+					name = member.getEffectiveName();       //This will either use the Member's nickname if they have one,
 				}                                           // otherwise it will default to their username. (User#getName())
 
-				System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild_.getName(), guild_textChannel.getName(), name, msg);
+				System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild.getName(), textChannel.getName(), name, msg);
+			}
 			}
 			else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
 			{
