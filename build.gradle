@@ -1,0 +1,24 @@
+// https://github.com/DV8FromTheWorld/JDA/wiki/2%29-Eclipse-Setup#gradle-setup
+
+plugins {
+  id 'java'
+  id 'application'
+  id 'com.github.johnrengelman.shadow' version '1.2.4'
+}
+
+mainClassName = 'com.github.valdeza.DiscordMonitor.Program'
+
+version '1.0'
+
+sourceCompatibility = 1.8
+
+repositories {
+  jcenter()
+}
+
+dependencies {
+  compile 'net.dv8tion:JDA:3.0.0_194'
+  compile 'com.google.code.gson:gson:2.8.0'
+}
+
+compileJava.options.encoding = 'UTF-8'

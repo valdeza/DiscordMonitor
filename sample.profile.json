@@ -1,0 +1,50 @@
+{
+	"AuthType" : "CLIENT",
+	"AuthToken" : ""?missingtoken,
+
+	// Warning: If hosting a selfbot, avoid posting responses. Public use of selfbots is supposedly a bannable offense.
+	"EnableBotReply" : false,
+	// Leave CommandPrefix null to interpret all messages from AuthorizedUsers as a command (not recommended).
+	"CommandPrefix" : "!!",
+	"AuthorizedUsers" : [
+		{ "IdentifierLabel" : "self", "ServerId" : 0?yourserver, "ChannelId" : 1?yourchannel/optional, "UserId" : 2?youruserid }
+	],
+
+	// If left null, undefined, or provided paths are unable to be written to,
+	// will fall back to the value of java.io.tmpdir (typically '/tmp' for *nix or '%APPDATA%\..\Local\Temp' for Windows).
+	"AttachmentDatastorePaths" : [
+		
+	],
+
+	//Reminder: stdout can also be copied to a file via `tee` (*nix) or `Tee-Object` (Windows PowerShell).
+//TODO?//"StdoutVerbosity" : ["ALL"], // Acceptable values: ["ALL"], ["LOGGED","NOTIFICATIONS"], ["MINIMAL"]
+
+//TODO Rename Location -> Filepath
+	// Leave LogDBLocation null if you do not wish for stdout to be copied to a file.
+	"LogDBLocation" : "C:\\Users\\v\\Documents\\webchat logs\\discordmonitor.log.sqlite",
+	"LogTargets" : [
+		{ "IdentifierLabel" : "TargetDiscord", "ServerId" : 3?targetserver },
+		{ "IdentifierLabel" : "C2BM", "ServerId" : 0?yourserver }
+	],
+
+	"NotificationTextLogLocation" : "C:\\Users\\v\\Documents\\webchat logs\\discord.mabination_notify.tmp.log",
+	// Reminder: Escape backslashes when defining MessageRegex.
+	"NotificationWatchlist" : [
+		// Target possibly covering something up
+		{ "IdentifierLabel" : "TargetCoverup_Edit", "ServerId" : 3?targetserver, "UserId" : 4?targetuserid, "MessageRegex" : "(?i)wh?oo?ps?", "EventType" : ["EDIT"] },
+		{ "IdentifierLabel" : "TargetCoverup_Delete", "ServerId" : 3?targetserver, "UserId" : 4?targetuserid, "EventType" : ["DELETE"] },
+
+		// Someone may have mentioned me
+		{ "IdentifierLabel" : "MentionedMe", "ServerId" : 3?targetserver, "MessageRegex" : "(?i).{0,2}(ja(en|ne|y)|d(oe|eo)).{0,2}", "MessageProcessingOptions" : ["IGNORE_WHITESPACE"] },
+		// No typo tolerance. Does not refer to me by nickname.
+		{ "IdentifierLabel" : "MentionedMe//Strict-Global", "MessageRegex" : "(?i).{0,2}(jane|doe).{0,2}", "MessageProcessingOptions" : ["IGNORE_WHITESPACE"] },
+
+		{ "IdentifierLabel" : "DetectedAttachment", "ServerId" : 3?targetserver, "MessageProcessingOptions" : ["AUTODOWNLOAD_ATTACHMENTS"]},
+
+		// Any other potentially suspicious activity
+		{ "IdentifierLabel" : "DetectedEdit", "ServerId" : 3?targetserver, "EventType" : ["EDIT"] },
+		{ "IdentifierLabel" : "DetectedEdit-Global", "EventType" : ["EDIT"] },
+		{ "IdentifierLabel" : "DetectedDelete", "ServerId" : 3?targetserver, "EventType" : ["DELETE"] },
+		{ "IdentifierLabel" : "DetectedDelete-Global", "EventType" : ["DELETE"] }
+	]
+}
