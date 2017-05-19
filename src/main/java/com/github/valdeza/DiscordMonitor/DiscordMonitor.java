@@ -124,7 +124,9 @@ class DiscordMonitor
 			boolean isGuildEvent = event.getChannelType().isGuild();
 			Guild guild_ = message.getGuild(); //The Guild that this message was sent in. (note, in the API, Guilds are Servers)
 			TextChannel guild_textChannel = message.getTextChannel(); //The TextChannel that this message was sent to.
-			Member guild_member = guild_.getMember(author); //This Member that sent the message. Contains Guild specific information about the User!
+			Member guild_member = null; //This Member that sent the message. Contains Guild specific information about the User!
+			if (isGuildEvent)
+				guild_member = guild_.getMember(author);
 			
 			boolean declaredLoggableHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
