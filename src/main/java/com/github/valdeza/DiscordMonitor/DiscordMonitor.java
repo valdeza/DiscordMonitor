@@ -201,6 +201,9 @@ class DiscordMonitor
 
 				System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild.getName(), textChannel.getName(), name, msg);
 			}
+			else if (event.isFromType(ChannelType.PRIVATE))
+			{
+				System.out.printf("%d:[DM]<%s>: %s\n\n", message.getIdLong(), author.getName(), msg);
 			}
 			else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
 			{
