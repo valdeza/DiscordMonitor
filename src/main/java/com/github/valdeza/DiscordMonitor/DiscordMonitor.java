@@ -1,5 +1,6 @@
 package com.github.valdeza.DiscordMonitor;
 
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -14,6 +15,7 @@ import net.dv8tion.jda.core.entities.Member;
 import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.entities.Message.Attachment;
 import net.dv8tion.jda.core.entities.MessageEmbed;
+import net.dv8tion.jda.core.entities.PrivateChannel;
 import net.dv8tion.jda.core.entities.TextChannel;
 import net.dv8tion.jda.core.entities.User;
 import net.dv8tion.jda.core.events.message.GenericMessageEvent;
@@ -26,6 +28,7 @@ import net.dv8tion.jda.core.hooks.ListenerAdapter;
 
 class DiscordMonitor
 {
+	private static final DateTimeFormatter LOG_DATETIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXXXX");
 	private DiscordMonitorConfig appconfig;
 
 	public DiscordMonitor(DiscordMonitorConfig appconfig)
@@ -93,40 +96,42 @@ class DiscordMonitor
 			if (authorizedCommandHit)
 				; //TODO Process and log command
 			else // Proceed with treating this as a potentially loggable event.
-				eventHandlerMessageReceivedOrUpdate(event);
+				eventHandlerGenericMessageEvent(event);
 		}
-		
+
 		@Override
 		public void onMessageUpdate(MessageUpdateEvent event)
 		{
-			eventHandlerMessageReceivedOrUpdate(event);
+			eventHandlerGenericMessageEvent(event);
 		}
-		
-		private void eventHandlerMessageReceivedOrUpdate(GenericMessageEvent event)
+
+		@Override
+		public void onMessageDelete(MessageDeleteEvent event)
+		{
+			eventHandlerGenericMessageEvent(event);
+		}
+
+		/**
+		 * Checks log and notification targets and prints message content to console for the following event types:
+		 * <ul>
+		 * <li> {@link net.dv8tion.jda.core.events.message.MessageDeleteEvent}
+		 * <li> {@link net.dv8tion.jda.core.events.message.MessageReceivedEvent}
+		 * <li> {@link net.dv8tion.jda.core.events.message.MessageUpdateEvent}
+		 * </ul>
+		 * @param event
+		 * @throws IllegalArgumentException Thrown if provided <em>event</em> is not one of the aforementioned types.
+		 */
+		private void eventHandlerGenericMessageEvent(GenericMessageEvent event)
 		{
 			//These are provided with every event in JDA
 			JDA jda = event.getJDA();                       //JDA, the core of the api.
 
-			//Event specific information
-			Message message; //The message that was received.
-			if (event instanceof MessageReceivedEvent)
-				message = ((MessageReceivedEvent)event).getMessage();
-			else if (event instanceof MessageUpdateEvent)
-				message = ((MessageUpdateEvent)event).getMessage();
-			else
-				throw new IllegalArgumentException("Provided event is not of type MessageReceivedEvent nor MessageUpdateEvent");
-			
-			User author = message.getAuthor();                //The user that sent the message
-
-			boolean bot = author.isBot();                    //This boolean is useful to determine if the User that
-															// sent the Message is a BOT or not!
-			
 			boolean declaredLoggableHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
 			{
 				if (!DiscordMonitorBotUtilities.isTargetIdentifierMatchGeneric(targetid, event))
 					continue;
-				
+
 				// All conditions passed.
 				if (!declaredLoggableHit)
 				{
@@ -154,77 +159,164 @@ class DiscordMonitor
 			}
 			if (declaredNotificationHit)
 				System.out.println();
-			
-			final DateTimeFormatter dateTimeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXXXX");
-			StringBuilder msg = new StringBuilder("\n")
-				.append("Time: ").append(
-					message.isEdited()
-					? message.getEditedTime().format(dateTimeFormat)
-					: message.getCreationTime().format(dateTimeFormat))
-				.append("\nMessage: ").append(message.getContent()); //This returns a human readable version of the Message. Similar to what you would see in the client.
-			List<MessageEmbed> embeds = message.getEmbeds();
-			int currEmbedCount = 0;
-			for (MessageEmbed embedProbe : embeds)
-			{
-				msg.append(String.format("\nEmbed[%d]: { ", currEmbedCount++));
-				//TODO Use Gson?
-				msg.append("}");
-			}
-			
-			List<Attachment> attachments = message.getAttachments();
-			for (Attachment attachmentProbe : attachments)
-			{
-				msg.append(String.format("\nAttachment[%d]: { ", currEmbedCount++));
-				//TODO Use Gson?
-				msg.append("}");
-			}
 
-			if (event.isFromType(ChannelType.TEXT))         //If this message was sent to a Guild TextChannel
+			//Event specific information
+			Message message = null; //The message that was received.
+			if (event instanceof MessageReceivedEvent)
+				message = ((MessageReceivedEvent)event).getMessage();
+			else if (event instanceof MessageUpdateEvent)
+				message = ((MessageUpdateEvent)event).getMessage();
+			else if (!(event instanceof MessageDeleteEvent))
+				throw new IllegalArgumentException("Provided event is not of type Message(Delete|Received|Update)Event");
+
+			StringBuilder msg = new StringBuilder("\n");
+			if (message == null)
 			{
-				//Because we now know that this message was sent in a Guild, we can do guild specific things
-				// Note, if you don't check the ChannelType before using these methods, they might return null due
-				// the message possibly not being from a Guild!
+				msg.append("Time: ").append(OffsetDateTime.now().format(DiscordMonitor.LOG_DATETIME_FORMAT)).append(" (approximate)")
+					.append("\nMESSAGE DELETED");
 
-				Guild guild = message.getGuild(); //The Guild that this message was sent in. (note, in the API, Guilds are Servers)
-				TextChannel textChannel = message.getTextChannel(); //The TextChannel that this message was sent to.
-				Member member = guild.getMember(author); //This Member that sent the message. Contains Guild specific information about the User!
+				//TODO Poll .sqlite db for previous message details
 
-				String name;
-				if (message.isWebhookMessage())
+				if (event.isFromType(ChannelType.TEXT))         //If this message was sent to a Guild TextChannel
 				{
-					name = author.getName();                //If this is a Webhook message, then there is no Member associated
-				}                                           // with the User, thus we default to the author for name.
-				else
+					TextChannel textChannel = (TextChannel)event.getChannel();
+					System.out.printf("%d:(%s)[%s]: %s\n\n", event.getMessageIdLong(), textChannel.getGuild().getName(), textChannel.getName(), msg);
+				}
+				else if (event.isFromType(ChannelType.PRIVATE))
 				{
-					name = member.getEffectiveName();       //This will either use the Member's nickname if they have one,
-				}                                           // otherwise it will default to their username. (User#getName())
+					PrivateChannel privateChannel = (PrivateChannel)event.getChannel();
+					System.out.printf("%d:[DM]<%s>: %s\n\n", event.getMessageIdLong(), privateChannel.getName(), msg);
+				}
+				else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
+				{
+					//The message was sent in a Group. It should be noted that Groups are CLIENT only.
+					Group group = (Group)event.getChannel();
+					String groupName = group.getName() != null ? group.getName() : "";  //A group name can be null due to it being unnamed.
 
-				System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild.getName(), textChannel.getName(), name, msg);
+					System.out.printf("%d:[GRP: %s]: %s\n\n", event.getMessageIdLong(), groupName, msg);
+				}
 			}
-			else if (event.isFromType(ChannelType.PRIVATE))
+			else // event includes a Message variable
 			{
-				System.out.printf("%d:[DM]<%s>: %s\n\n", message.getIdLong(), author.getName(), msg);
-			}
-			else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
-			{
-				//The message was sent in a Group. It should be noted that Groups are CLIENT only.
-				Group group = message.getGroup();
-				String groupName = group.getName() != null ? group.getName() : "";  //A group name can be null due to it being unnamed.
+				msg.append("Time: ").append(
+						message.isEdited()
+						? message.getEditedTime().format(DiscordMonitor.LOG_DATETIME_FORMAT)
+						: message.getCreationTime().format(DiscordMonitor.LOG_DATETIME_FORMAT))
+					.append("\nMessage: ").append(message.getContent()); //This returns a human readable version of the Message. Similar to what you would see in the client.
+				List<MessageEmbed> embeds = message.getEmbeds();
+				int currEmbedCount = 0;
+				for (MessageEmbed embedProbe : embeds)
+				{
+					msg.append(String.format("\nEmbed[%d]: { ", currEmbedCount++));
+					//TODO Use Gson?
+					msg.append("}");
+				}
 
-				System.out.printf("%d:[GRP: %s]<%s>: %s\n\n", message.getIdLong(), groupName, author.getName(), msg);
+				List<Attachment> attachments = message.getAttachments();
+				for (Attachment attachmentProbe : attachments)
+				{
+					msg.append(String.format("\nAttachment[%d]: { ", currEmbedCount++));
+					//TODO Use Gson?
+					msg.append("}");
+				}
+
+				User author = message.getAuthor();                //The user that sent the message
+
+				boolean bot = author.isBot();                    //This boolean is useful to determine if the User that
+																// sent the Message is a BOT or not!
+
+				if (event.isFromType(ChannelType.TEXT))         //If this message was sent to a Guild TextChannel
+				{
+					//Because we now know that this message was sent in a Guild, we can do guild specific things
+					// Note, if you don't check the ChannelType before using these methods, they might return null due
+					// the message possibly not being from a Guild!
+
+					Guild guild = message.getGuild(); //The Guild that this message was sent in. (note, in the API, Guilds are Servers)
+					TextChannel textChannel = message.getTextChannel(); //The TextChannel that this message was sent to.
+					Member member = guild.getMember(author); //This Member that sent the message. Contains Guild specific information about the User!
+
+					String name;
+					if (message.isWebhookMessage())
+					{
+						name = author.getName();                //If this is a Webhook message, then there is no Member associated
+					}                                           // with the User, thus we default to the author for name.
+					else
+					{
+						name = member.getEffectiveName();       //This will either use the Member's nickname if they have one,
+					}                                           // otherwise it will default to their username. (User#getName())
+
+					System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild.getName(), textChannel.getName(), name, msg);
+				}
+				else if (event.isFromType(ChannelType.PRIVATE))
+				{
+					System.out.printf("%d:[DM]<%s>: %s\n\n", message.getIdLong(), author.getName(), msg);
+				}
+				else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
+				{
+					//The message was sent in a Group. It should be noted that Groups are CLIENT only.
+					Group group = message.getGroup();
+					String groupName = group.getName() != null ? group.getName() : "";  //A group name can be null due to it being unnamed.
+
+					System.out.printf("%d:[GRP: %s]<%s>: %s\n\n", message.getIdLong(), groupName, author.getName(), msg);
+				}
 			}
 		}
-		
-		@Override
-		public void onMessageDelete(MessageDeleteEvent event)
-		{
-			//TODO
-		}
-		
+
+		// Can apparently only happen in TextChannels (guilds).
 		@Override
 		public void onMessageBulkDelete(MessageBulkDeleteEvent event)
 		{
-			//TODO
+			//These are provided with every event in JDA
+			JDA jda = event.getJDA();                       //JDA, the core of the api.
+
+			long serverId = event.getGuild().getIdLong();
+			long channelId = event.getChannel().getIdLong();
+
+			boolean declaredLoggableHit = false;
+			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
+			{
+				if (!targetid.matches(serverId, channelId, null, null, MessageEventType.DELETE))
+					continue;
+
+				// All conditions passed.
+				if (!declaredLoggableHit)
+				{
+					declaredLoggableHit = true;
+					System.out.print("(i) Logging for:");
+				}
+				System.out.print(" " + targetid.identifierLabel);
+			}
+			if (declaredLoggableHit)
+				System.out.println();
+
+			boolean declaredNotificationHit = false;
+			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.notificationWatchlist)
+			{
+				if (!targetid.matches(serverId, channelId, null, null, MessageEventType.DELETE))
+					continue;
+
+				// All conditions passed.
+				if (!declaredNotificationHit)
+				{
+					declaredNotificationHit = true;
+					System.out.print("/!\\ WATCHLIST HIT:");
+				}
+				System.out.print(" " + targetid.identifierLabel);
+			}
+			if (declaredNotificationHit)
+				System.out.println();
+
+
+			StringBuilder msg = new StringBuilder("\n")
+				.append("Time: ").append(OffsetDateTime.now().format(DiscordMonitor.LOG_DATETIME_FORMAT)).append(" (approximate)")
+				.append("\nMESSAGES DELETED:");
+			for (String msgId : event.getMessageIds())
+				msg.append(" ").append(msgId);
+
+			//TODO Poll .sqlite db for previous message details
+
+			TextChannel textChannel = (TextChannel)event.getChannel();
+			System.out.printf("(%s)[%s]: %s\n\n", textChannel.getGuild().getName(), textChannel.getName(), msg);
 		}
 	}
 }
