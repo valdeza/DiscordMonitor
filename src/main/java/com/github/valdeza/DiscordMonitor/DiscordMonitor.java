@@ -275,7 +275,7 @@ class DiscordMonitor
 			boolean declaredLoggableHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
 			{
-				if (!targetid.matches(serverId, channelId, null, null, MessageEventType.DELETE))
+				if (!targetid.matches(serverId, channelId, null, null, null, MessageEventType.DELETE))
 					continue;
 
 				// All conditions passed.
@@ -292,7 +292,7 @@ class DiscordMonitor
 			boolean declaredNotificationHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.notificationWatchlist)
 			{
-				if (!targetid.matches(serverId, channelId, null, null, MessageEventType.DELETE))
+				if (!targetid.matches(serverId, channelId, null, null, null, MessageEventType.DELETE))
 					continue;
 
 				// All conditions passed.

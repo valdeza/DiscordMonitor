@@ -52,7 +52,7 @@ class DiscordMonitorBotUtilities
 			}
 		}
 		
-		// Try to extract userId and messageContent if a MessageReceivedEvent or MessageUpdatedEvent
+		// Try to extract userId, messageContent, and whether there is an attachment if a MessageReceivedEvent or MessageUpdatedEvent
 		Message message = null;
 		if (event instanceof MessageReceivedEvent)
 			message = ((MessageReceivedEvent)event).getMessage();
@@ -61,13 +61,15 @@ class DiscordMonitorBotUtilities
 		
 		Long channelId = null, userId = null;
 		String messageContent = null;
+		Boolean isAttachmentFound = null;
 		if (message != null)
 		{
 			channelId = message.getChannel().getIdLong();
 			userId = message.getAuthor().getIdLong();
 			messageContent = message.getStrippedContent();
+			isAttachmentFound = !message.getAttachments().isEmpty();
 		}
-		//TODO Check against .sqlite DB to fetch user ID/message content for MessageDeleteEvents.
+		//TODO Check against .sqlite DB to fetch previous information for MessageDeleteEvents.
 		
 		MessageEventType eventType = null;
 		if (event instanceof MessageReceivedEvent)
@@ -88,6 +90,6 @@ class DiscordMonitorBotUtilities
 			System.out.println("warning: Unsupported GenericMessageEvent provided. Ignoring event type for target identifier matching...");
 			
 		
-		return tid.matches(serverId, channelId, userId, messageContent, eventType);
+		return tid.matches(serverId, channelId, userId, messageContent, isAttachmentFound, eventType);
 	}
 }

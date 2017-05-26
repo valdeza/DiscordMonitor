@@ -31,18 +31,19 @@ class DiscordMonitorTargetIdentifier
 	public Pattern messageRegex;
 	public EnumSet<MessageProcessingOptions> messageProcessingOptions;
 	public EnumSet<MessageEventType> eventType;
-	
+
 	/** Returns whether this DMTargetIdentifier matches the given parametres.
 	 * null may be provided for any of the parametres to skip match checks for that parametre
 	 * (e.g. specifying all nulls will return true).
-	 * 
+	 *
 	 * @param serverId
 	 * @param channelId Note: Can be the same as 'serverId' if the ID given corresponds to the general/public/default channel of a guild/server.
 	 * @param userId
-	 * @param messageContent
+	 * @param messageContent Message content expected to be {@linkplain net.dv8tion.jda.core.entities.Message#getStrippedContent() stripped of Markdown formatting characters}.
+	 * @param hasMessageAttachment
 	 * @param eventType
 	 */
-	public boolean matches(Long serverId, Long channelId, Long userId, String messageContent, MessageEventType eventType)
+	public boolean matches(Long serverId, Long channelId, Long userId, String messageContent, Boolean hasMessageAttachment, MessageEventType eventType)
 	{
 		if (this.serverId != null && serverId != null && !this.serverId.equals(serverId))
 			return false;
@@ -69,10 +70,14 @@ class DiscordMonitorTargetIdentifier
 			else if (!this.messageRegex.matcher(messageContent).find())
 				return false;
 		}
-		
+
+		if (this.messageProcessingOptions != null && this.messageProcessingOptions.contains(MessageProcessingOptions.HAS_ATTACHMENTS)
+				&& hasMessageAttachment != null && !hasMessageAttachment)
+			return false;
+
 		if (this.eventType != null && eventType != null && !this.eventType.contains(eventType))
 			return false;
-		
+
 		return true;
 	}
 }
