@@ -18,6 +18,7 @@ import net.dv8tion.jda.core.entities.MessageEmbed;
 import net.dv8tion.jda.core.entities.PrivateChannel;
 import net.dv8tion.jda.core.entities.TextChannel;
 import net.dv8tion.jda.core.entities.User;
+import net.dv8tion.jda.core.events.ReadyEvent;
 import net.dv8tion.jda.core.events.message.GenericMessageEvent;
 import net.dv8tion.jda.core.events.message.MessageBulkDeleteEvent;
 import net.dv8tion.jda.core.events.message.MessageDeleteEvent;
@@ -46,7 +47,7 @@ class DiscordMonitor
 				.setToken(this.appconfig.authToken)
 				.setAudioEnabled(false)
 				.setAutoReconnect(true)
-				.addEventListener(new DiscordMonitorListenerAdapter())
+				.addEventListener(new DiscordMonitorListenerAdapterPrep())
 				.buildBlocking(); // TODO use .buildAsync()?
 		}
 		catch (LoginException | IllegalArgumentException e)
@@ -61,6 +62,20 @@ class DiscordMonitor
 		{
 			System.err.println("fatal: Unexpected interrupt.");
 			e.printStackTrace();
+		}
+	}
+
+	private class DiscordMonitorListenerAdapterPrep extends ListenerAdapter
+	{
+		@Override
+		public void onReady(ReadyEvent event)
+		{
+			System.out.println("info: Validating configuration against JDA instance...");
+			JDA jda = event.getJDA();
+			DiscordMonitor.this.appconfig.validateJDA(jda);
+			jda.removeEventListener(this);
+			jda.addEventListener(new DiscordMonitorListenerAdapter());
+			System.out.println("info: Validation complete. Discord events subscribed to.");
 		}
 	}
 

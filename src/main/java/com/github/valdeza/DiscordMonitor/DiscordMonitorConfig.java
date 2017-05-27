@@ -17,6 +17,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
 
 import net.dv8tion.jda.core.AccountType;
+import net.dv8tion.jda.core.JDA;
 
 class DiscordMonitorConfig
 {
@@ -124,5 +125,43 @@ class DiscordMonitorConfig
 		for (DiscordMonitorTargetIdentifier tid : this.notificationWatchlist)
 			if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
 				tid.messageProcessingOptions.add(MessageProcessingOptions.HAS_ATTACHMENTS);
+	}
+
+	/** Validation checks to be performed on bot startup.
+	 * The following checks are performed:
+	 * <ul>
+	 * <li> If client/user bot is configured to respond to other users, warns against this behaviour and deauthorises all users other than the one represented by the {@linkplain DiscordMonitorConfig#authToken bot's own token}.
+	 *      <!-- Implemented as this is supposedly considered a bannable offense (according to the Discord API channel).
+	 *           Overridable by setting {@link DiscordMonitorConfig#OVERRIDE_IGNORE_SELFBOT_REPLY_CHECK}. -->
+	 * </ul>
+	 * @param jda An <strong>already logged-in</strong> JDA instance this DMConfig is intended to be used with
+	 */ // On selfbot usage: Supposedly considered a bannable offense (according to Discord API channel).
+	public void validateJDA(JDA jda)
+	{
+		if (this.enableBotReply != null && this.enableBotReply)
+		{
+			if (DiscordMonitorConfig.OVERRIDE_IGNORE_SELFBOT_REPLY_CHECK)
+				System.out.println("warning: This selfbot is configured to reply to other users, "
+					+ "placing this account at risk of ban in public channels.");
+			else if (this.authType != null && this.authType == AccountType.CLIENT)
+			{ // Check and guard against selfbots replying to other users.
+				boolean warningIssued = false;
+				long selfUserId = jda.getSelfUser().getIdLong();
+				for (DiscordMonitorTargetIdentifier tid : this.authorizedUsers)
+				{
+					if (tid.userId == null || !tid.userId.equals(selfUserId))
+					{
+						if (warningIssued)
+						{
+							System.out.println("warning: Detected selfbot possibly configured to reply to other users (prohibited action). "
+								+ "All 'AuthorizedUsers' entries have been set to the user ID belonging to the provided 'AuthToken'.");
+							warningIssued = true;
+						}
+
+						tid.userId = selfUserId;
+					}
+				}
+			}
+		}
 	}
 }
