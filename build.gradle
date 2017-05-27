@@ -17,7 +17,7 @@ repositories {
 }
 
 dependencies {
-  compile 'net.dv8tion:JDA:3.0.0_194'
+  compile 'net.dv8tion:JDA:3.1.0_206'
   compile 'com.google.code.gson:gson:2.8.0'
 }
 
