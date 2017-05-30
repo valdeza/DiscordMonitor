@@ -30,6 +30,11 @@ class DiscordMonitorConfig
 	/** Set to 'true' to allow selfbots to reply to other users. */
 	private static final boolean OVERRIDE_IGNORE_SELFBOT_REPLY_CHECK = false;
 	public LinkedList<String> attachmentDatastorePaths;
+	public Boolean useTempDir;
+	private static final boolean DEFAULT_VALUE_USE_TEMP_DIR = false;
+	public Integer minFileSize;
+	public Integer maxFileSize;
+	public Integer maxDatastoreSize;
 	public String logDBLocation;
 	public DiscordMonitorTargetIdentifier[] logTargets;
 	public String notificationTextLogLocation;
@@ -70,13 +75,22 @@ class DiscordMonitorConfig
 		}
 	}
 
+	private static class FileTypeDeserializer implements JsonDeserializer<File>
+	{
+		@Override
+		public File deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException
+		{
+			return new File(json.getAsString());
+		}
+	}
+
 	/** Initial validation checks prior to bot startup.
 	 * The following checks are performed:
 	 * <ul>
 	 * <li> Mandatory fields are defined
 	 * <li> Top-level elements are not null, assumed values and potentially undesirable program behaviour is stated
 	 *      (latter is suppressable by explicitly defining blank values in supplied .profile.json configuration file)
-	 * <li> Temporary directory added to field 'AttachmentDatastorePaths' via system property "java.io.tmpdir"
+	 * <li> Temporary directory added to field 'AttachmentDatastorePaths' via system property "java.io.tmpdir" (if requested by user)
 	 * <li> '{@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorTargetIdentifier#messageProcessingOptions MessageProcessingOptions}' of '{@linkplain DiscordMonitorTargetIdentifier DMTargetIdentifiers}' are set correctly
 	 *      (where "{@link DiscordMonitorTargetIdentifier.MessageProcessingOptions#AUTODOWNLOAD_ATTACHMENTS AUTODOWNLOAD_ATTACHMENTS}" are always accompanied by "{@link DiscordMonitorTargetIdentifier.MessageProcessingOptions#HAS_ATTACHMENTS HAS_ATTACHMENTS}")
 	 * </ul>
@@ -113,10 +127,26 @@ class DiscordMonitorConfig
 				+ "Specify \"AuthorizedUsers\":[] in supplied .profile.json to suppress this warning.");
 		}
 
+		if (this.attachmentDatastorePaths != null && this.useTempDir == null)
+		{
+			this.useTempDir = DiscordMonitorConfig.DEFAULT_VALUE_USE_TEMP_DIR;
+			System.out.println("warning: Field 'UseTempDir' undefined. Assuming 'false'.");
+		}
+
 		if (this.attachmentDatastorePaths == null)
-			this.attachmentDatastorePaths = new LinkedList<String>();
-		// Using temporary directory as fallback
-		this.attachmentDatastorePaths.add(System.getProperty("java.io.tmpdir"));
+			System.out.println("info: Field 'AttachmentDatastorePaths' is null. "
+				+ "Attachment auto-downloading disabled.");
+		else if (this.useTempDir)
+			this.attachmentDatastorePaths.add(System.getProperty("java.io.tmpdir"));
+
+		if (this.minFileSize <= 0)
+			this.minFileSize = null;
+
+		if (this.maxFileSize != null && this.maxFileSize < 0)
+			throw new IllegalArgumentException("error: Field 'MaxFileSize' cannot be negative.");
+
+		if (this.maxDatastoreSize != null && this.maxDatastoreSize < 0)
+			throw new IllegalArgumentException("error: Field 'MaxDatastoreSize' cannot be negative.");
 
 		for (DiscordMonitorTargetIdentifier tid : this.logTargets)
 			if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
