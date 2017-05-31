@@ -1,5 +1,6 @@
 package com.github.valdeza.DiscordMonitor;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.lang.reflect.Type;
@@ -29,15 +30,15 @@ class DiscordMonitorConfig
 	public DiscordMonitorTargetIdentifier[] authorizedUsers;
 	/** Set to 'true' to allow selfbots to reply to other users. */
 	private static final boolean OVERRIDE_IGNORE_SELFBOT_REPLY_CHECK = false;
-	public LinkedList<String> attachmentDatastorePaths;
+	public LinkedList<File> attachmentDatastorePaths;
 	public Boolean useTempDir;
 	private static final boolean DEFAULT_VALUE_USE_TEMP_DIR = false;
 	public Integer minFileSize;
 	public Integer maxFileSize;
 	public Integer maxDatastoreSize;
-	public String logDBLocation;
+	public File logDBLocation;
 	public DiscordMonitorTargetIdentifier[] logTargets;
-	public String notificationTextLogLocation;
+	public File notificationTextLogLocation;
 	public DiscordMonitorTargetIdentifier[] notificationWatchlist;
 
 	/**
@@ -52,6 +53,7 @@ class DiscordMonitorConfig
 			.setFieldNamingPolicy(FieldNamingPolicy.UPPER_CAMEL_CASE)
 			.disableHtmlEscaping()
 			.registerTypeAdapter(Pattern.class, new PatternTypeDeserializer())
+			.registerTypeAdapter(File.class, new FileTypeDeserializer())
 			.create();
 		DiscordMonitorConfig config = gson.fromJson(new FileReader(filepath), DiscordMonitorConfig.class);
 		config.validateInit();
@@ -90,7 +92,12 @@ class DiscordMonitorConfig
 	 * <li> Mandatory fields are defined
 	 * <li> Top-level elements are not null, assumed values and potentially undesirable program behaviour is stated
 	 *      (latter is suppressable by explicitly defining blank values in supplied .profile.json configuration file)
-	 * <li> Temporary directory added to field 'AttachmentDatastorePaths' via system property "java.io.tmpdir" (if requested by user)
+	 * <li> Temporary directory added to field '{@link com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePaths}' via system property "java.io.tmpdir" (if requested by user)
+	 * <li> Provided paths are valid:
+	 * 	<ul>
+	 * 	<li> {@link DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePaths} do not point to files
+	 * 	<li> Neither {@link DiscordMonitorConfig#logDBLocation LogDBLocation} nor {@link DiscordMonitorConfig#notificationTextLogLocation NotificationTextLogLocation} point to a directory
+	 * 	</ul>
 	 * <li> '{@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorTargetIdentifier#messageProcessingOptions MessageProcessingOptions}' of '{@linkplain DiscordMonitorTargetIdentifier DMTargetIdentifiers}' are set correctly
 	 *      (where "{@link DiscordMonitorTargetIdentifier.MessageProcessingOptions#AUTODOWNLOAD_ATTACHMENTS AUTODOWNLOAD_ATTACHMENTS}" are always accompanied by "{@link DiscordMonitorTargetIdentifier.MessageProcessingOptions#HAS_ATTACHMENTS HAS_ATTACHMENTS}")
 	 * </ul>
@@ -136,8 +143,16 @@ class DiscordMonitorConfig
 		if (this.attachmentDatastorePaths == null)
 			System.out.println("info: Field 'AttachmentDatastorePaths' is null. "
 				+ "Attachment auto-downloading disabled.");
-		else if (this.useTempDir)
-			this.attachmentDatastorePaths.add(System.getProperty("java.io.tmpdir"));
+		else
+		{
+			if (this.useTempDir)
+				this.attachmentDatastorePaths.add(new File(System.getProperty("java.io.tmpdir")));
+
+			// This config option only accepts directory paths.
+			for (File path : this.attachmentDatastorePaths)
+				if (path.isFile())
+					throw new IllegalArgumentException("error: AttachmentDatastorePath cannot be file: " + path.toString());
+		}
 
 		if (this.minFileSize <= 0)
 			this.minFileSize = null;
@@ -148,13 +163,27 @@ class DiscordMonitorConfig
 		if (this.maxDatastoreSize != null && this.maxDatastoreSize < 0)
 			throw new IllegalArgumentException("error: Field 'MaxDatastoreSize' cannot be negative.");
 
-		for (DiscordMonitorTargetIdentifier tid : this.logTargets)
-			if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
-				tid.messageProcessingOptions.add(MessageProcessingOptions.HAS_ATTACHMENTS);
+		if (this.logDBLocation == null)
+			System.out.println("info: Field 'LogDBLocation' is null. "
+				+ "Message activity logging disabled.");
+		else if (this.logDBLocation.isDirectory())
+			throw new IllegalArgumentException("error: LogDBLocation cannot be directory: " + this.logDBLocation.toString());
 
-		for (DiscordMonitorTargetIdentifier tid : this.notificationWatchlist)
-			if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
-				tid.messageProcessingOptions.add(MessageProcessingOptions.HAS_ATTACHMENTS);
+		if (this.logTargets != null)
+			for (DiscordMonitorTargetIdentifier tid : this.logTargets)
+				if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
+					tid.messageProcessingOptions.add(MessageProcessingOptions.HAS_ATTACHMENTS);
+
+		if (this.notificationTextLogLocation == null)
+			System.out.println("info: Field 'NotificationTextLogLocation' is null. "
+				+ "Watchlist notifications disabled.");
+		else if (this.notificationTextLogLocation.isDirectory())
+			throw new IllegalArgumentException("error: NotificationTextLogLocation cannot be directory: " + this.notificationTextLogLocation.toString());
+
+		if (this.notificationWatchlist != null)
+			for (DiscordMonitorTargetIdentifier tid : this.notificationWatchlist)
+				if (tid.messageProcessingOptions != null && tid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
+					tid.messageProcessingOptions.add(MessageProcessingOptions.HAS_ATTACHMENTS);
 	}
 
 	/** Validation checks to be performed on bot startup.
