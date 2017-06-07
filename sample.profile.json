@@ -3,24 +3,43 @@
 	"AuthToken" : ""?missingtoken,
 
 	// Warning: If hosting a selfbot, avoid posting responses. Public use of selfbots is supposedly a bannable offense.
+	// However, note that setting this to false would require you to have access to the hosting console to view bot responses.
 	"EnableBotReply" : false,
-	// Leave CommandPrefix null to interpret all messages from AuthorizedUsers as a command (not recommended).
+	// Leave CommandPrefix null or commented out to never interpret commands
+	// or blank ("") to interpret all messages from AuthorizedUsers as a command (not recommended).
 	"CommandPrefix" : "!!",
+	// Leave AuthorizedUsers as an empty array to render this bot non-interactive.
 	"AuthorizedUsers" : [
 		{ "IdentifierLabel" : "self", "ServerId" : 0?yourserver, "ChannelId" : 1?yourchannel/optional, "UserId" : 2?youruserid }
 	],
 
-	// If left null, undefined, or provided paths are unable to be written to,
+	// Whether to save attachments to the Java-specified temporary directory.
+	// This may be undesirable if automatically saving potentially sensitive attachments to unsecured locations.
+	"UseTempDir" : true,
+	// Leave AttachmentDatastorePaths null to disable automatic attachment-saving.
+	// Otherwise, if the provided paths are unable to be written to and if UseTempDir above is true,
 	// will fall back to the value of java.io.tmpdir (typically '/tmp' for *nix or '%APPDATA%\..\Local\Temp' for Windows).
+	// Paths will be written to from top to bottom as they either become inaccessible or meet the below size quota.
+	// If no paths remain, attachment auto-downloading will be disabled.
 	"AttachmentDatastorePaths" : [
-		
+		"D:\\",
+		"F:\\"
+		/* Temporary directory, if enabled */
 	],
+// All attachment-related options below are to be expressed in either bytes or as null to ignore the option.
+	// Minimum file size: Files below this many bytes will not be downloaded.
+	"MinFileSize" : 0,
+	// Maximum file size: Files above this many bytes will not be downloaded.
+	"MaxFileSize" : null,
+	// Maximum datastore size: Once a specified datastore path exceeds this size,
+	// subsequent attachments will be downloaded to the next specified datastore path.
+	"MaxDatastoreSize" : null,
 
 	//Reminder: stdout can also be copied to a file via `tee` (*nix) or `Tee-Object` (Windows PowerShell).
 //TODO?//"StdoutVerbosity" : ["ALL"], // Acceptable values: ["ALL"], ["LOGGED","NOTIFICATIONS"], ["MINIMAL"]
 
 //TODO Rename Location -> Filepath
-	// Leave LogDBLocation null if you do not wish for stdout to be copied to a file.
+	// Leave LogDBLocation null if you do not wish for message activity to be copied to a file.
 	"LogDBLocation" : "C:\\Users\\v\\Documents\\webchat logs\\discordmonitor.log.sqlite",
 	"LogTargets" : [
 		{ "IdentifierLabel" : "TargetDiscord", "ServerId" : 3?targetserver },
