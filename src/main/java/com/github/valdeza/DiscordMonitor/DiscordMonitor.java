@@ -1,10 +1,14 @@
 package com.github.valdeza.DiscordMonitor;
 
+import java.io.File;
+import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import javax.security.auth.login.LoginException;
+
+import com.github.valdeza.DiscordMonitor.DiscordMonitorTargetIdentifier.MessageProcessingOptions;
 
 import net.dv8tion.jda.client.entities.Group;
 import net.dv8tion.jda.core.JDA;
@@ -30,6 +34,8 @@ import net.dv8tion.jda.core.hooks.ListenerAdapter;
 class DiscordMonitor
 {
 	private static final DateTimeFormatter LOG_DATETIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSSXXXXX");
+	private static final int ATTACHMENT_DOWNLOAD_RETRY_LIMIT = 5;
+
 	private DiscordMonitorConfig appconfig;
 
 	public DiscordMonitor(DiscordMonitorConfig appconfig)
@@ -141,6 +147,8 @@ class DiscordMonitor
 			//These are provided with every event in JDA
 			JDA jda = event.getJDA();                       //JDA, the core of the api.
 
+			boolean doAutoDownloadAttachments = false;
+
 			boolean declaredLoggableHit = false;
 			for (DiscordMonitorTargetIdentifier targetid : DiscordMonitor.this.appconfig.logTargets)
 			{
@@ -154,6 +162,10 @@ class DiscordMonitor
 					System.out.print("(i) Logging for:");
 				}
 				System.out.print(" " + targetid.identifierLabel);
+
+				if (!doAutoDownloadAttachments // Skip check if already true
+						&& targetid.messageProcessingOptions != null && targetid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
+					doAutoDownloadAttachments = true;
 			}
 			if (declaredLoggableHit)
 				System.out.println();
@@ -171,6 +183,10 @@ class DiscordMonitor
 					System.out.print("/!\\ WATCHLIST HIT:");
 				}
 				System.out.print(" " + targetid.identifierLabel);
+
+				if (!doAutoDownloadAttachments // Skip check if already true
+						&& targetid.messageProcessingOptions != null && targetid.messageProcessingOptions.contains(MessageProcessingOptions.AUTODOWNLOAD_ATTACHMENTS))
+					doAutoDownloadAttachments = true;
 			}
 			if (declaredNotificationHit)
 				System.out.println();
@@ -227,12 +243,89 @@ class DiscordMonitor
 					msg.append("}");
 				}
 
+				boolean attachmentDownloadFailed = false;
 				List<Attachment> attachments = message.getAttachments();
+				int currAttachmentCount = 0;
 				for (Attachment attachmentProbe : attachments)
 				{
-					msg.append(String.format("\nAttachment[%d]: { ", currEmbedCount++));
+					msg.append(String.format("\nAttachment[%d]: { ", currAttachmentCount++));
 					//TODO Use Gson?
 					msg.append("}");
+
+					if (doAutoDownloadAttachments)
+					{
+						if (DiscordMonitor.this.appconfig.attachmentDatastorePaths == null)
+						{ // Attachment auto-downloading disabled
+							doAutoDownloadAttachments = false;
+							continue;
+						}
+
+						/* Note: Despite edits being unable to add/remove attachments,
+						 * will also download for edited messages because
+						 * (1) the bot may not have been active at the time of message creation and
+						 * (2) Discord file attachment limits should typically have negligible impact on disk space usage
+						 *     (8 MB typical attachment limit; 50 MB for presumably rare Discord Nitro users)
+						 */
+						// Loop to retry downloads if needed.
+						for (int retryCount = 1; retryCount <= DiscordMonitor.ATTACHMENT_DOWNLOAD_RETRY_LIMIT; ++retryCount)
+						{
+							if (retryCount != 1)
+								System.out.printf("info: Attachment download attempt %d/%d", retryCount, DiscordMonitor.ATTACHMENT_DOWNLOAD_RETRY_LIMIT);
+
+							DiscordMonitor.this.appconfig.refreshCurrentAttachmentDatastorePath();
+							if (DiscordMonitor.this.appconfig.attachmentDatastorePaths.isEmpty())
+							{ // No directory to download to
+								attachmentDownloadFailed = true;
+								break;
+							}
+
+							File downloadPath = DiscordMonitor.this.appconfig.getDownloadFilepath(attachmentProbe.getFileName());
+							if (attachmentProbe.download(downloadPath))
+							{ // Download successful
+								DiscordMonitor.this.appconfig.notifySpentAttachmentDatastoreCapacity(attachmentProbe.getSize());
+								msg.append("\nAttachment downloaded to: ").append(downloadPath.toString());
+								break;
+							}
+
+							// Download unsuccessful. Test if directory is writable before retrying.
+							if (retryCount == 1)
+							{
+								boolean writeSuccess = false;
+								try
+								{
+									File.createTempFile("writetest", null, DiscordMonitor.this.appconfig.attachmentDatastorePaths.peek()).deleteOnExit();
+									writeSuccess = true;
+								}
+								catch (IOException e)
+								{
+									System.out.println("warning: Current AttachmentDatastorePath is not able to be written to.");
+									System.out.println(e.toString()); // Print details?
+									DiscordMonitor.this.appconfig.nextAttachmentDatastorePath(false);
+								}
+								catch (SecurityException e)
+								{
+									System.out.println("warning: Denied write access to current AttachmentDatastorePath.");
+									DiscordMonitor.this.appconfig.nextAttachmentDatastorePath(false);
+								}
+
+								if (!writeSuccess)
+								{
+									attachmentDownloadFailed = true;
+									break;
+								}
+							}
+
+							if (retryCount == DiscordMonitor.ATTACHMENT_DOWNLOAD_RETRY_LIMIT)
+								attachmentDownloadFailed = true;
+						}
+					}
+				}
+				if (attachmentDownloadFailed)
+				{
+					msg.append("\nUnable to auto-download attachment(s)");
+					if (DiscordMonitor.this.appconfig.attachmentDatastorePaths.isEmpty())
+						msg.append(": no valid AttachmentDatastorePaths");
+					msg.append(". See URL(s) for manual download.");
 				}
 
 				User author = message.getAuthor();                //The user that sent the message

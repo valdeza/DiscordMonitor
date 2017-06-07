@@ -8,6 +8,10 @@ import java.util.LinkedList;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+
 import com.github.valdeza.DiscordMonitor.DiscordMonitorTargetIdentifier.MessageProcessingOptions;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
@@ -35,7 +39,8 @@ class DiscordMonitorConfig
 	private static final boolean DEFAULT_VALUE_USE_TEMP_DIR = false;
 	public Integer minFileSize;
 	public Integer maxFileSize;
-	public Integer maxDatastoreSize;
+	public Long maxDatastoreSize;
+	private long remainingDatastoreCapacity = 0;
 	public File logDBLocation;
 	public DiscordMonitorTargetIdentifier[] logTargets;
 	public File notificationTextLogLocation;
@@ -222,5 +227,113 @@ class DiscordMonitorConfig
 				}
 			}
 		}
+	}
+
+	/**
+	 * <em>To be called prior to accessing {@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePaths}.</em>
+	 * <br>With announcement, updates the current head AttachmentDatastorePath if it fails to meet the {@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#maxDatastoreSize MaxDatastoreSize} restriction, if set.
+	 */
+	public void refreshCurrentAttachmentDatastorePath()
+	{
+		// Precondition: There is a specified limit to how large a datastore path can be.
+		if (this.maxDatastoreSize == null)
+			return;
+
+		// Precondition: There exists at least one AttachmentDatastorePath to work with.
+		if (this.attachmentDatastorePaths.isEmpty())
+			return;
+
+		// Precondition: Attachment auto-downloading not disabled.
+		if (this.attachmentDatastorePaths == null)
+			return;
+
+		// Check if space remaining. If not, pop off path and notify.
+		if (this.remainingDatastoreCapacity <= 0)
+		{
+			while (true) // Re-examine current datastore path until OK or no more paths
+			{
+				long currDirSize = FileUtils.sizeOfDirectory(this.attachmentDatastorePaths.peek());
+				if (currDirSize < 0)
+					System.out.println("error: Removed datastore path (size too large): " + this.attachmentDatastorePaths.remove());
+				else if (currDirSize == 0)
+					System.out.println("error: Removed datastore path (access denied): " + this.attachmentDatastorePaths.remove());
+				else
+				{ // Recheck directory size. Files may have been deleted since then.
+					long remainingDatastoreCapacity = this.maxDatastoreSize - currDirSize;
+					if (remainingDatastoreCapacity <= 0)
+						System.out.println("warning: Removed datastore path (over size limit): " + this.attachmentDatastorePaths.remove());
+					else
+					{
+						this.remainingDatastoreCapacity = remainingDatastoreCapacity;
+						return; // Current datastore path is OK
+					}
+				}
+
+				if (this.attachmentDatastorePaths.isEmpty())
+				{
+					System.out.println("warning: No datastore paths remaining. Can no longer auto-download attachments.");
+					return;
+				}
+			}
+		}
+	}
+
+	/** <em>It is expected to have {@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#refreshCurrentAttachmentDatastorePath() refreshed} the current {@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePath} prior to calling this method.</em>
+	 * <br>Using the current AttachmentDatastorePath and given <em>filename</em>, generates an absolute file path to a file location to be written to. Uniqueness is guaranteed by appending random alphanumeric characters to the end of the given <em>filename</em>. If the current AttachmentDatastorePath refers to a directory that does not exist yet, it will be created (along with parent directories, if needed).
+	 * @param filename Name of the file to save to--including extension
+	 * @return An absolute file path to be supplied to the aforementioned {@link net.dv8tion.jda.core.entities.Message.Attachment#download(File) download} method
+	 * @throws UnsupportedOperationException Thrown if this config's {@linkplain DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePaths} is in an invalid state (is null or empty)
+	 * @see net.dv8tion.jda.core.entities.Message.Attachment#download(File)
+	 * @see net.dv8tion.jda.core.entities.Message.Attachment#getFileName()
+	 */
+	public File generateDownloadFilepath(String filename) throws UnsupportedOperationException
+	{
+		if (this.attachmentDatastorePaths == null)
+			throw new UnsupportedOperationException("Cannot generate download filepath: attachment auto-download disabled");
+		if (this.attachmentDatastorePaths.isEmpty())
+			throw new UnsupportedOperationException("Cannot generate download filepath: no AttachmentDatastorePaths remaining.");
+		if (!this.attachmentDatastorePaths.peek().exists())
+			this.attachmentDatastorePaths.peek().mkdirs();
+
+		String dirpath = this.attachmentDatastorePaths.peek().toString();
+		if (!dirpath.endsWith(File.separator))
+			dirpath += File.separatorChar;
+
+		String basename = FilenameUtils.removeExtension(filename);
+		if (!basename.equals(""))
+			basename += '_'; // Separates original file name from random tag.
+
+		String extension = FilenameUtils.getExtension(filename);
+		if (!extension.equals(""))
+			extension = '.' + extension;
+
+		// Try generating filepaths with random suffixes until a unique filepath is found.
+		String randsuffix = "";
+		while (true)
+		{
+			randsuffix += RandomStringUtils.randomAlphanumeric(1);
+			File fileCandidate = new File(dirpath + basename + randsuffix + extension);
+			if (!fileCandidate.exists())
+				return fileCandidate;
+		}
+	}
+
+	public void notifySpentAttachmentDatastoreCapacity(long numBytes)
+	{
+		this.remainingDatastoreCapacity -= numBytes;
+	}
+
+	/**
+	 * Removes the current {@linkplain com.github.valdeza.DiscordMonitor.DiscordMonitorConfig#attachmentDatastorePaths AttachmentDatastorePath},
+	 * returning the subsequent AttachmentDatastorePath or, if the list of AttachmentDatastorePaths is empty, null.
+	 * @param isExpected Specify 'true' to tag the deletion message as 'info'; otherwise 'false' tags the deletion message as 'warning'.
+	 * @return Next AttachmentDatastorePath
+	 * @throws java.util.NoSuchElementException Thrown if the list of AttachmentDatastorePaths is empty.
+	 */
+	public File nextAttachmentDatastorePath(boolean isExpected)
+	{
+		this.attachmentDatastorePaths.remove();
+		System.out.println((isExpected ? "info" : "warning") + ": Removed datastore path (over size limit): " + this.attachmentDatastorePaths.remove());
+		return this.attachmentDatastorePaths.peek();
 	}
 }
