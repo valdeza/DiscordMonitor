@@ -279,7 +279,7 @@ class DiscordMonitor
 								break;
 							}
 
-							File downloadPath = DiscordMonitor.this.appconfig.getDownloadFilepath(attachmentProbe.getFileName());
+							File downloadPath = DiscordMonitor.this.appconfig.generateDownloadFilepath(attachmentProbe.getFileName());
 							if (attachmentProbe.download(downloadPath))
 							{ // Download successful
 								DiscordMonitor.this.appconfig.notifySpentAttachmentDatastoreCapacity(attachmentProbe.getSize());
