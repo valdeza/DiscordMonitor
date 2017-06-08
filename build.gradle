@@ -17,8 +17,9 @@ repositories {
 }
 
 dependencies {
-  compile 'net.dv8tion:JDA:3.1.0_206'
-  compile 'com.google.code.gson:gson:2.8.0'
+  compile 'net.dv8tion:JDA:3.1.0_206' // Java Discord API
+  compile 'com.google.code.gson:gson:2.8.0' // JSON de/serialiser
+  compile 'commons-io:commons-io:2.5' // Apache Commons IO library
 }
 
 compileJava.options.encoding = 'UTF-8'
