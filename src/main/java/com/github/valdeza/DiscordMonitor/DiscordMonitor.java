@@ -3,6 +3,7 @@ package com.github.valdeza.DiscordMonitor;
 import java.io.File;
 import java.io.IOException;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -203,7 +204,7 @@ class DiscordMonitor
 			StringBuilder msg = new StringBuilder("\n");
 			if (message == null)
 			{
-				msg.append("Time: ").append(OffsetDateTime.now().format(DiscordMonitor.LOG_DATETIME_FORMAT)).append(" (approximate)")
+				msg.append("Time: ").append(OffsetDateTime.now(ZoneId.of("Z")).format(DiscordMonitor.LOG_DATETIME_FORMAT)).append(" (approximate)")
 					.append("\nMESSAGE DELETED");
 
 				//TODO Poll .sqlite db for previous message details
