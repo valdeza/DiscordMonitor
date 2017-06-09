@@ -109,7 +109,7 @@ class DiscordMonitor
 					}
 					else
 					{
-						System.out.printf("*** Command ran by user '%s#%s' (id: %d) as per identifier '%s':\n\t%s\n\n", 
+						System.out.printf("*** Command ran by user '%s#%s' (id: %d) as per identifier '%s':\n\t%s\n\n",
 							author.getName(), author.getDiscriminator(), author.getIdLong(), targetid.identifierLabel, event.getMessage().getRawContent());
 					}
 					break;
@@ -176,7 +176,7 @@ class DiscordMonitor
 			{
 				if (!DiscordMonitorBotUtilities.isTargetIdentifierMatchGeneric(targetid, event))
 					continue;
-				
+
 				// All conditions passed.
 				if (!declaredNotificationHit)
 				{
@@ -239,9 +239,8 @@ class DiscordMonitor
 				int currEmbedCount = 0;
 				for (MessageEmbed embedProbe : embeds)
 				{
-					msg.append(String.format("\nEmbed[%d]: { ", currEmbedCount++));
-					//TODO Use Gson?
-					msg.append("}");
+					msg.append(String.format("\nEmbed[%d]: ", currEmbedCount++))
+						.append(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(embedProbe));
 				}
 
 				boolean attachmentDownloadFailed = false;
@@ -249,9 +248,8 @@ class DiscordMonitor
 				int currAttachmentCount = 0;
 				for (Attachment attachmentProbe : attachments)
 				{
-					msg.append(String.format("\nAttachment[%d]: { ", currAttachmentCount++));
-					//TODO Use Gson?
-					msg.append("}");
+					msg.append(String.format("\nAttachment[%d]: ", currAttachmentCount++))
+						.append(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(attachmentProbe));
 
 					if (doAutoDownloadAttachments)
 					{

@@ -1,6 +1,13 @@
 package com.github.valdeza.DiscordMonitor;
 
+import com.google.gson.ExclusionStrategy;
+import com.google.gson.FieldAttributes;
+import com.google.gson.FieldNamingPolicy;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
 import net.dv8tion.jda.client.entities.Group;
+import net.dv8tion.jda.core.JDA;
 import net.dv8tion.jda.core.entities.ChannelType;
 import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.entities.MessageChannel;
@@ -13,6 +20,25 @@ import net.dv8tion.jda.core.events.message.MessageUpdateEvent;
 
 class DiscordMonitorBotUtilities
 {
+	static final Gson GSON_MESSAGE_ELEMENT_SERIALISER =
+		new GsonBuilder()
+			.setFieldNamingPolicy(FieldNamingPolicy.IDENTITY)
+			.setExclusionStrategies(new ExclusionStrategy() {
+				@Override
+				public boolean shouldSkipField(FieldAttributes f)
+				{
+					return false;
+				}
+
+				@Override
+				public boolean shouldSkipClass(Class<?> clazz)
+				{
+					return clazz.equals(JDA.class);
+				}
+			}).setPrettyPrinting()
+			.disableHtmlEscaping()
+			.create();
+
 	static boolean isTargetIdentifierMatchGeneric(DiscordMonitorTargetIdentifier tid, GenericMessageEvent event)
 	{
 		if (event.isFromType(ChannelType.VOICE))
