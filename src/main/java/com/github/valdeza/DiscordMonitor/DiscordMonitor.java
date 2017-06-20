@@ -212,12 +212,12 @@ class DiscordMonitor
 				if (event.isFromType(ChannelType.TEXT))         //If this message was sent to a Guild TextChannel
 				{
 					TextChannel textChannel = (TextChannel)event.getChannel();
-					System.out.printf("%d:(%s)[%s]: %s\n\n", event.getMessageIdLong(), textChannel.getGuild().getName(), textChannel.getName(), msg);
+					System.out.printf("%d:(%s)[%s]: %s\n\n", event.getMessageIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(textChannel.getGuild().getName()), DiscordMonitorBotUtilities.replaceBellCharacter(textChannel.getName()), msg);
 				}
 				else if (event.isFromType(ChannelType.PRIVATE))
 				{
 					PrivateChannel privateChannel = (PrivateChannel)event.getChannel();
-					System.out.printf("%d:[DM]<%s>: %s\n\n", event.getMessageIdLong(), privateChannel.getName(), msg);
+					System.out.printf("%d:[DM]<%s>: %s\n\n", event.getMessageIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(privateChannel.getName()), msg);
 				}
 				else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
 				{
@@ -225,7 +225,7 @@ class DiscordMonitor
 					Group group = (Group)event.getChannel();
 					String groupName = group.getName() != null ? group.getName() : "";  //A group name can be null due to it being unnamed.
 
-					System.out.printf("%d:[GRP: %s]: %s\n\n", event.getMessageIdLong(), groupName, msg);
+					System.out.printf("%d:[GRP: %s]: %s\n\n", event.getMessageIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(groupName), msg);
 				}
 			}
 			else // event includes a Message variable
@@ -234,13 +234,13 @@ class DiscordMonitor
 						message.isEdited()
 						? message.getEditedTime().format(DiscordMonitor.LOG_DATETIME_FORMAT)
 						: message.getCreationTime().format(DiscordMonitor.LOG_DATETIME_FORMAT))
-					.append("\nMessage: ").append(message.getContent()); //This returns a human readable version of the Message. Similar to what you would see in the client.
+					.append("\nMessage: ").append(DiscordMonitorBotUtilities.replaceBellCharacter(message.getContent())); //This returns a human readable version of the Message. Similar to what you would see in the client.
 				List<MessageEmbed> embeds = message.getEmbeds();
 				int currEmbedCount = 0;
 				for (MessageEmbed embedProbe : embeds)
 				{
 					msg.append(String.format("\nEmbed[%d]: ", currEmbedCount++))
-						.append(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(embedProbe));
+						.append(DiscordMonitorBotUtilities.replaceBellCharacter(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(embedProbe)));
 				}
 
 				boolean attachmentDownloadFailed = false;
@@ -249,7 +249,7 @@ class DiscordMonitor
 				for (Attachment attachmentProbe : attachments)
 				{
 					msg.append(String.format("\nAttachment[%d]: ", currAttachmentCount++))
-						.append(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(attachmentProbe));
+						.append(DiscordMonitorBotUtilities.replaceBellCharacter(DiscordMonitorBotUtilities.GSON_MESSAGE_ELEMENT_SERIALISER.toJson(attachmentProbe)));
 
 					if (doAutoDownloadAttachments)
 					{
@@ -352,7 +352,7 @@ class DiscordMonitor
 						name = member.getEffectiveName();       //This will either use the Member's nickname if they have one,
 					}                                           // otherwise it will default to their username. (User#getName())
 
-					System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), guild.getName(), textChannel.getName(), name, msg);
+					System.out.printf("%d:(%s)[%s]<%s>: %s\n\n", message.getIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(guild.getName()), DiscordMonitorBotUtilities.replaceBellCharacter(textChannel.getName()), DiscordMonitorBotUtilities.replaceBellCharacter(name), msg);
 				}
 				else if (event.isFromType(ChannelType.PRIVATE))
 				{
@@ -361,7 +361,7 @@ class DiscordMonitor
 					String dmIdentifier = other.getIdLong() == author.getIdLong()
 						? (other.getName() + " -> " + self.getName())
 						: (self.getName() + " -> " + other.getName());
-					System.out.printf("%d:[DM]<%s>: %s\n\n", message.getIdLong(), dmIdentifier, msg);
+					System.out.printf("%d:[DM]<%s>: %s\n\n", message.getIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(dmIdentifier), msg);
 				}
 				else if (event.isFromType(ChannelType.GROUP))   //If this message was sent to a Group. This is CLIENT only!
 				{
@@ -369,7 +369,7 @@ class DiscordMonitor
 					Group group = message.getGroup();
 					String groupName = group.getName() != null ? group.getName() : "";  //A group name can be null due to it being unnamed.
 
-					System.out.printf("%d:[GRP: %s]<%s>: %s\n\n", message.getIdLong(), groupName, author.getName(), msg);
+					System.out.printf("%d:[GRP: %s]<%s>: %s\n\n", message.getIdLong(), DiscordMonitorBotUtilities.replaceBellCharacter(groupName), DiscordMonitorBotUtilities.replaceBellCharacter(author.getName()), msg);
 				}
 			}
 		}

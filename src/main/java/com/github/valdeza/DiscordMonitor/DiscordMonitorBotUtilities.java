@@ -20,6 +20,8 @@ import net.dv8tion.jda.core.events.message.MessageUpdateEvent;
 
 class DiscordMonitorBotUtilities
 {
+	static final char BELL_CHARACTER = '\007';
+
 	static final Gson GSON_MESSAGE_ELEMENT_SERIALISER =
 		new GsonBuilder()
 			.setFieldNamingPolicy(FieldNamingPolicy.IDENTITY)
@@ -117,5 +119,14 @@ class DiscordMonitorBotUtilities
 			
 		
 		return tid.matches(serverId, channelId, userId, messageContent, isAttachmentFound, eventType);
+	}
+
+	/** Returns a string with all occurrences of the 'bell' character (ASCII code 0x07) replaced by a dot ('.').
+	 * The bell character causes terminals to beep or chime.
+	 * @param s String possibly containing bell characters to replace
+	 */
+	static String replaceBellCharacter(String s)
+	{
+		return s.replace(DiscordMonitorBotUtilities.BELL_CHARACTER, '.');
 	}
 }
