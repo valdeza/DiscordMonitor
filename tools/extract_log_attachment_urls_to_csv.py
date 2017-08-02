@@ -15,7 +15,7 @@ import json
 import re
 
 def main(args):
-	REGEX_STR = r"(?:(?P<msgid>\d+):\((?P<guildname>.+)\)\[(?P<channelname>.+)\]<(?P<username>.+)>: |(?P<dm_msgid>\d+):\[DM\]<(?P<dm_user1>.*) -> (?P<dm_user2>.*)>:)\r?\n.*\r?\nMessage:(?:(?!(?:\d+):).*\r?\n)+Attachment\[0\]: (?P<attachmentjson>\{(?:.*\r?\n)*?\})"
+	REGEX_STR = r"(?:(?P<msgid>\d+):\((?P<guildname>.+)\)\[(?P<channelname>.+)\]<(?P<username>.+)>: |(?P<dm_msgid>\d+):\[DM\]<(?P<dm_user1>.*) -> (?P<dm_user2>.*)>:\s?)\r?\n.*\r?\nMessage:(?:(?!(?:\d+):).*\r?\n)+Attachment\[0\]: (?P<attachmentjson>\{(?:.*\r?\n)*?\})"
 	regex = re.compile(REGEX_STR)
 
 	if args.read_encoding is not None:
@@ -25,7 +25,7 @@ def main(args):
 	if args.verbose is not None and args.verbose >= 1:
 		do_print_current_msgid = True
 
-	is_match_all_mode = args.guild is None and args.channel is None and args.user is None
+	is_unspecified_target = args.guild is None and args.channel is None and args.user is None
 
 	file_content = ""
 	with args.logfile as fin:
@@ -38,15 +38,28 @@ def main(args):
 
 		for match in regex.finditer(file_content):
 			groupdict = match.groupdict()
+			is_dm = groupdict["dm_msgid"] is not None
 			if do_print_current_msgid:
-				print("Processing msgid:", (groupdict["msgid"] if groupdict["dm_msgid"] is None else groupdict["dm_msgid"]), "... ", sep='', flush=True)
-			if (is_match_all_mode
-					or (args.guild is not None and groupdict["guildname"] in args.guild)
-					or (args.channel is not None and groupdict["channelname"] in args.channel)
-					or (args.user is not None
-						and (groupdict["username"] in args.user
-						or groupdict["dm_user1"] in args.user
-						or groupdict["dm_user2"] in args.user))):
+				print("Processing msgid:", (groupdict["msgid"] if not is_dm else groupdict["dm_msgid"]), "... ", sep='', flush=True)
+
+			# Check whether to process this message according to DM-handling args and var is_dm.
+			# Reference logic table:
+			# dm_only ignore_dm is_dm | is_dm_check_ok
+			# 0       0         *     | 1
+			# 0       1         0     | 1
+			# 0       1         1     | 0
+			# 1       0         0     | 0
+			# 1       0         1     | 1
+			# 1       1         *     | X # disregard output, dm_only and ignore_dm are mutually exclusive
+			is_dm_check_ok = args.ignore_dm ^ is_dm or not args.dm_only ^ args.ignore_dm
+			is_target_check_ok = (is_unspecified_target
+				or (args.guild is not None and groupdict["guildname"] in args.guild)
+				or (args.channel is not None and groupdict["channelname"] in args.channel)
+				or (args.user is not None
+					and (groupdict["username"] in args.user
+					or groupdict["dm_user1"] in args.user
+					or groupdict["dm_user2"] in args.user)))
+			if is_dm_check_ok and is_target_check_ok:
 				attachmentjson = json.loads(groupdict["attachmentjson"])
 				csvwriter.writerow({
 					"msgid" : groupdict["msgid"],
@@ -66,6 +79,13 @@ def main(args):
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(
 		description="'guild', 'channel', and 'user' arguments can be supplied multiple times to specify additional targets. Not specifying any targets will output all attachment URLs.")
+	arggroup_dm_handling = parser.add_mutually_exclusive_group()
+	arggroup_dm_handling.add_argument("--dm-only",
+		action="store_true",
+		help="specify to only target DMs")
+	arggroup_dm_handling.add_argument("--ignore-dm",
+		action="store_true",
+		help="specify to exclude DMs")
 	parser.add_argument("--guild", "-g",
 		action="append",
 		help="guild name to target")
