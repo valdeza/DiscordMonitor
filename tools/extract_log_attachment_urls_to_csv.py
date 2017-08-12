@@ -1,10 +1,10 @@
 """Gets attachment URLs from DiscordMonitor verbose logs.
 
-A temporary solution for downloading attachments from certain guilds, channels, and/or users.
+A temporary solution for downloading attachments from certain groups, guilds, channels, and/or users.
 (At the current time of writing, DiscordMonitor cannot be used to obtain snowflake IDs without cluttering the log file.)
 
 This script outputs to .csv instead of directly downloading for review.
-The .csv file can then be processed and piped to wget or a download manager of your choice.
+The .csv file can then be processed or filtered to be input to download_from_attachments_csv.py . Alternatively, the .csv file may be piped to wget or a download manager of your choice.
 
 Working as of 20 Jun 2017, DiscordMonitor git-revision 457d6700f65c6c3ec58caaa38f0b466e61258725
 """
@@ -13,80 +13,168 @@ import argparse
 import csv
 import json
 import re
+import sys
+import textwrap
+import warnings
+
+REGEX_STR = r"(?:(?P<msgid>\d+):\((?P<guildname>.+)\)\[(?P<channelname>.+)\]<(?P<username>.+)>: ?|(?P<dm_msgid>\d+):\[DM\]<(?P<dm_user1>.*) -> (?P<dm_user2>.*)>: ?|(?P<group_msgid>\d+):\[GRP: (?P<group_name>.*?)\]<(?P<group_username>.+)>: ?)\r?\n.*\r?\nMessage:(?:(?!(?:\d+):).*\r?\n)+Attachment\[0\]: (?P<attachmentjson>\{(?:.*\r?\n)*?\})"
+
+MESSAGE_TYPE_GUILD = 'G'
+MESSAGE_TYPE_DM    = 'D'
+MESSAGE_TYPE_GROUP = 'g'
 
 def main(args):
-	REGEX_STR = r"(?:(?P<msgid>\d+):\((?P<guildname>.+)\)\[(?P<channelname>.+)\]<(?P<username>.+)>: |(?P<dm_msgid>\d+):\[DM\]<(?P<dm_user1>.*) -> (?P<dm_user2>.*)>:\s?)\r?\n.*\r?\nMessage:(?:(?!(?:\d+):).*\r?\n)+Attachment\[0\]: (?P<attachmentjson>\{(?:.*\r?\n)*?\})"
+	warnings.simplefilter("always")
+
 	regex = re.compile(REGEX_STR)
 
 	if args.read_encoding is not None:
 		args.logfile._encoding = args.read_encoding
 
 	do_print_current_msgid = False
-	if args.verbose is not None and args.verbose >= 1:
-		do_print_current_msgid = True
+	is_debug_enabled = False
+	if args.verbose is not None:
+		if args.verbose >= 1:
+			do_print_current_msgid = True
+		if args.verbose >= 2:
+			is_debug_enabled = True
 
-	is_unspecified_target = args.guild is None and args.channel is None and args.user is None
+	is_unspecified_target = args.group is None and args.guild is None and args.channel is None and args.user is None
 
 	file_content = ""
 	with args.logfile as fin:
 		file_content = fin.read()
-	# Workaround: Some systems (Windows) will print an extra newline between each record
+
 	with args.outcsv if args.outcsv.name == "<stdout>" else open(args.outcsv.name, mode='w', newline='') as fout:
-		fieldnames = ["msgid", "guild_name", "channel_name", "username", "dm_msgid", "dm_user1", "dm_user2", "attachment_id", "attachment_url", "attachment_proxy_url", "filename", "bytes_size"]
+		fieldnames = ["msgtype", "msgid", "group_name", "guild_name", "channel_name", "username", "dm_user1", "dm_user2", "attachment_id", "attachment_url", "attachment_proxy_url", "filename", "bytes_size"]
 		csvwriter = csv.DictWriter(fout, fieldnames=fieldnames)
 		csvwriter.writeheader()
 
 		for match in regex.finditer(file_content):
 			groupdict = match.groupdict()
-			is_dm = groupdict["dm_msgid"] is not None
-			if do_print_current_msgid:
-				print("Processing msgid:", (groupdict["msgid"] if not is_dm else groupdict["dm_msgid"]), "... ", sep='', flush=True)
+			if is_debug_enabled:
+				print(groupdict)
 
-			# Check whether to process this message according to DM-handling args and var is_dm.
-			# Reference logic table:
-			# dm_only ignore_dm is_dm | is_dm_check_ok
-			# 0       0         *     | 1
-			# 0       1         0     | 1
-			# 0       1         1     | 0
-			# 1       0         0     | 0
-			# 1       0         1     | 1
-			# 1       1         *     | X # disregard output, dm_only and ignore_dm are mutually exclusive
-			is_dm_check_ok = args.ignore_dm ^ is_dm or not args.dm_only ^ args.ignore_dm
-			is_target_check_ok = (is_unspecified_target
-				or (args.guild is not None and groupdict["guildname"] in args.guild)
-				or (args.channel is not None and groupdict["channelname"] in args.channel)
-				or (args.user is not None
-					and (groupdict["username"] in args.user
-					or groupdict["dm_user1"] in args.user
-					or groupdict["dm_user2"] in args.user)))
-			if is_dm_check_ok and is_target_check_ok:
-				attachmentjson = json.loads(groupdict["attachmentjson"])
-				csvwriter.writerow({
-					"msgid" : groupdict["msgid"],
-					"guild_name" : groupdict["guildname"],
-					"channel_name" : groupdict["channelname"],
-					"username" : groupdict["username"],
-					"dm_msgid" : groupdict["dm_msgid"],
-					"dm_user1" : groupdict["dm_user1"],
-					"dm_user2" : groupdict["dm_user2"],
-					"attachment_id" : attachmentjson["id"],
-					"attachment_url" : attachmentjson["url"],
-					"attachment_proxy_url" : attachmentjson["proxyUrl"],
-					"filename" : attachmentjson["fileName"],
-					"bytes_size" : attachmentjson["size"]
-				})
+			is_dm = groupdict["dm_msgid"] is not None
+			is_group = groupdict["group_msgid"] is not None
+			is_guild = groupdict["msgid"] is not None
+			msgtype = -1
+			if is_dm:
+				msgtype = MESSAGE_TYPE_DM
+			elif is_group:
+				msgtype = MESSAGE_TYPE_GROUP
+			elif is_guild:
+				msgtype = MESSAGE_TYPE_GUILD
+			else:
+				warnings.warn("Encountered unknown message type. Message skipped.", SyntaxWarning)
+
+			assert is_dm ^ is_group ^ is_guild
+
+			msgid = -1
+			if is_dm:
+				msgid = groupdict["dm_msgid"]
+			elif is_group:
+				msgid = groupdict["group_msgid"]
+			elif is_guild:
+				msgid = groupdict["msgid"]
+
+			if do_print_current_msgid:
+				print("Processing msgid:", msgid, "...", sep='', end='', flush=True)
+
+			# Should process?
+			## Check inclusion filtre
+			if ((args.include_guild or args.include_dm or args.include_group) # is any included?
+					and ((is_guild and not args.include_guild)
+						or (is_dm and not args.include_dm)
+						or (is_group and not args.include_group))):
+				if is_debug_enabled:
+					print(" reject: not included")
+				continue
+
+			## Check exclusion filtre
+			if ((is_guild and args.exclude_guild)
+					or (is_dm and args.exclude_dm)
+					or (is_group and args.exclude_group)):
+				if is_debug_enabled:
+					print(" reject: excluded")
+				continue
+
+			## Check targets
+			if (not (is_unspecified_target
+					or (args.group is not None and groupdict["group_name"] in args.group)
+					or (args.guild is not None and groupdict["guildname"] in args.guild)
+					or (args.channel is not None and groupdict["channelname"] in args.channel)
+					or (args.user is not None
+						and (groupdict["username"] in args.user
+						or groupdict["dm_user1"] in args.user
+						or groupdict["dm_user2"] in args.user
+						or groupdict["group_username"] in args.user)))):
+				if is_debug_enabled:
+					print(" reject: non-target")
+				continue
+			# Do process check passed
+
+			attachmentjson = json.loads(groupdict["attachmentjson"])
+			rowdata = {
+				"msgtype" : msgtype,
+				"msgid" : msgid,
+				"group_name" : "(blank)" if groupdict["group_name"] == '' else groupdict["group_name"],
+				"guild_name" : groupdict["guildname"],
+				"channel_name" : groupdict["channelname"],
+				"username" : groupdict["username"] if groupdict["group_username"] is None else groupdict["group_username"],
+				"dm_user1" : groupdict["dm_user1"],
+				"dm_user2" : groupdict["dm_user2"],
+				"attachment_id" : attachmentjson["id"],
+				"attachment_url" : attachmentjson["url"],
+				"attachment_proxy_url" : attachmentjson["proxyUrl"],
+				"filename" : attachmentjson["fileName"],
+				"bytes_size" : attachmentjson["size"]
+			}
+			csvwriter.writerow(rowdata)
+			if do_print_current_msgid:
+				print(" written to file")
+			if is_debug_enabled:
+				print(rowdata)
 
 if __name__ == "__main__":
+	indentwrap1 = textwrap.TextWrapper(initial_indent='\t', subsequent_indent='\t')
 	parser = argparse.ArgumentParser(
-		description="'guild', 'channel', and 'user' arguments can be supplied multiple times to specify additional targets. Not specifying any targets will output all attachment URLs.")
+		formatter_class=argparse.RawDescriptionHelpFormatter, # permits newlines in description/epilog
+		description="'group', guild', 'channel', and 'user' arguments can be supplied multiple times to specify additional targets.\n"
+			+ "Not specifying any targets will output all attachment URLs.",
+		epilog="example optional arguments:"
+			+ "\n(none)\n"
+				+ indentwrap1.fill("Basic operation. Will dump any and all found attachment metadata to .csv")
+			+ "\n-g group1 -g group2 -G guild -u user in.log out.csv\n"
+				+ indentwrap1.fill("Writes to .csv any attachment metadata meeting at least one of the specified targets.")
+			+ "\n-g=''\n"
+				+ indentwrap1.fill("Target (output all attachment metadata from) unnamed groups.")
+			+ "\n--include-dm --include-group\n"
+				+ indentwrap1.fill("Target only DM and group messages. Equivalent to \"--exclude-guild\".")
+			+ "\n--exclude-guild -u user -v\n"
+				+ indentwrap1.fill("Target DM and group messages from the specified user, outputting the current processed msgid along the way.")
+			+ "\n-vv\n"
+				+ indentwrap1.fill("Prints debug output: input regex match data and output csv data.\n"
+				+ "Highly verbose: tee-ing or redirecting output to file is suggested."))
+	arggroup_guild_handling = parser.add_mutually_exclusive_group()
+	arggroup_guild_handling.add_argument("--include-guild",
+		action="store_true")
+	arggroup_guild_handling.add_argument("--exclude-guild",
+		action="store_true")
 	arggroup_dm_handling = parser.add_mutually_exclusive_group()
-	arggroup_dm_handling.add_argument("--dm-only",
-		action="store_true",
-		help="specify to only target DMs")
-	arggroup_dm_handling.add_argument("--ignore-dm",
-		action="store_true",
-		help="specify to exclude DMs")
-	parser.add_argument("--guild", "-g",
+	arggroup_dm_handling.add_argument("--include-dm",
+		action="store_true")
+	arggroup_dm_handling.add_argument("--exclude-dm",
+		action="store_true")
+	arggroup_group_handling = parser.add_mutually_exclusive_group()
+	arggroup_group_handling.add_argument("--include-group",
+		action="store_true")
+	arggroup_group_handling.add_argument("--exclude-group",
+		action="store_true")
+	parser.add_argument("--group", "-g",
+		action="append",
+		help="group name to target (note: group names can be blank. Target blank group names via \"-g=''\")")
+	parser.add_argument("--guild", "-G",
 		action="append",
 		help="guild name to target")
 	parser.add_argument("--channel", "-c",
@@ -107,4 +195,11 @@ if __name__ == "__main__":
 	parser.add_argument("--verbose", "-v",
 		action="count",
 		help="verbosity level, increase by specifying multiple times: 0-silent, 1-display current processed msgid, 2-debug info")
-	main(parser.parse_args())
+	parsed_args = parser.parse_args()
+
+	if parsed_args.exclude_guild and parsed_args.exclude_dm and parsed_args.exclude_group:
+		sys.exit() # Nothing to do.
+
+	if parsed_args.verbose is not None and parsed_args.verbose >= 2: # is debug enabled?
+		print(parsed_args)
+	main(parsed_args)

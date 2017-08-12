@@ -38,7 +38,7 @@ def main(args):
 		byte_count = 0
 		csvreader = csv.DictReader(fin, strict=True)
 		for row in csvreader:
-			msgid = row["msgid"] if row["dm_msgid"] is '' else row["dm_msgid"]
+			msgid = row["msgid"]
 			attid = row["attachment_id"]
 			destination_path = get_unique_path(args.outdir, row["filename"])
 
