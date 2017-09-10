@@ -58,7 +58,8 @@ def main(args):
 					try:
 						download_url(row["attachment_proxy_url"], destination_path, args.user_agent)
 					except urllib.error.HTTPError as err2:
-						if err2.code == 502: #Bad Gateway
+						if (err2.code == 502 #Bad Gateway
+								or err2.code == 404): #Not Found
 							print("DELETED ("+str(err2)+")")
 							# File's gone. Can't do anything about it.
 						else:
@@ -114,7 +115,7 @@ def get_unique_path(directory, filename):
 def download_url(url, destination_path, useragent=None):
 	request = urllib.request.Request(url,
 		headers={"User-Agent": useragent} if useragent is not None else {})
-	with urllib.request.urlopen(request) as response, open(destination_path, mode="xb") as fout:
+	with urllib.request.urlopen(request) as response, open(str(destination_path), mode="xb") as fout:
 		shutil.copyfileobj(response, fout)
 
 #src: https://stackoverflow.com/q/11415570 ("directory path types with argparse")
